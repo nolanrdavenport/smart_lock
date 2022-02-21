@@ -1,4 +1,4 @@
-# Install script for directory: /home/guzzo/esp/smart_lock/main
+# Install script for directory: /home/guzzo/smart_lock/main
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

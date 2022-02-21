@@ -1,4 +1,4 @@
-# Install script for directory: /home/guzzo/esp/smart_lock/components/HD44780
+# Install script for directory: /home/guzzo/smart_lock/components/HD44780
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)

@@ -1,8 +1,8 @@
 {
     "project_name":       "bootloader",
     "project_path":       "/home/guzzo/esp/esp-idf/components/bootloader/subproject",
-    "build_dir":          "/home/guzzo/esp/smart_lock/build/bootloader",
-    "config_file":        "/home/guzzo/esp/smart_lock/sdkconfig",
+    "build_dir":          "/home/guzzo/smart_lock/build/bootloader",
+    "config_file":        "/home/guzzo/smart_lock/sdkconfig",
     "config_defaults":    "",
     "app_elf":            "bootloader.elf",
     "app_bin":            "bootloader.bin",
