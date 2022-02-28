@@ -36,6 +36,7 @@ void blink_bitbang(){
     //    printf("blocking\n");
     //}
 
+    // initial setup, put in own function later.
     set_enable(1);
     while(read_data_pins() >= 128){
         printf("waiting\n");
@@ -46,23 +47,20 @@ void blink_bitbang(){
     set_enable(0);
     ets_delay_us(5);
 
-    display_on_off_control(1, 1, 1);
+    display_clear();
+
+    function_set(1, 1, 0);
+
+    display_on_off_control(1, 1, 0);
+    
     
     for(;;){
         gpio_set_level(LED_PIN, 1);
         vTaskDelay(200 / portTICK_PERIOD_MS);
         gpio_set_level(LED_PIN, 0);
         vTaskDelay(200 / portTICK_PERIOD_MS);
-        
-        /*
-        uint32_t input = REG_READ(GPIO_IN_REG);
-        input = input & BIT10;
-        input = (input > 0) ? 1 : 0;
-        printf("input: %d\n", input);
-        */
-        //printf("input: %d\n", gpio_get_level(RS));
-        
     }
+    
     
 }
 
@@ -141,20 +139,57 @@ void display_on_off_control(int display, int cursor, int blink){
     set_data_pins(instruction);
 
     set_enable(1);
-    ets_delay_us(20); // wait for 5 us for now. 
+    ets_delay_us(10); // wait for 5 us for now. 
     set_enable(0);
 
+    finish_instruction();
+    // done? 
+}
+
+void display_clear(){
+    set_rs(0);
+    set_rw(WRITE);
+    set_data_pin_direction(OUTPUT);
+    set_data_pins(0b00000001);
+
+    set_enable(1);
+    ets_delay_us(10); // wait for 5 us for now. 
+    set_enable(0);
+
+    finish_instruction();
+}
+
+void function_set(int data_length, int number_of_display_lines, int font){
+    // TODO: test this function. Untested. 
+
+    uint8_t instruction = 0b00100000;
+
+    if(data_length) instruction |= 0b00010000;
+    if(number_of_display_lines) instruction |= 0b00001000;
+    if(font) instruction |= 0b00000100;
+
+    set_rs(0);
+    set_rw(WRITE);
+    set_data_pin_direction(OUTPUT);
+
+    set_data_pins(instruction);
+
+    set_enable(1);
+    ets_delay_us(10); // wait for 5 us for now. 
+    set_enable(0);
+
+    finish_instruction();
+
+}
+
+void finish_instruction(){
+    set_rs(0);
     set_rw(READ);
     set_data_pin_direction(INPUT);
 
     while(lcd_busy()){
         ets_delay_us(5);
     }
-
-    // done? 
-
-
-
 }
 
 // you need to set rw outside of this function
