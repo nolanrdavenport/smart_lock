@@ -14,3 +14,5 @@ https://github.com/espressif/esp-idf/tree/master/components/driver
 https://www.mouser.com/pdfdocs/ESP32-Tech_Reference.pdf
 https://github.com/espressif/esp-idf/blob/453146fe75936b0e542d13254a11a71d4845c852/examples/peripherals/gpio/generic_gpio/main/gpio_example_main.c
 wait shorter than 1ms: https://www.esp32.com/viewtopic.php?t=880
+
+https://randomnerdtutorials.com/esp32-pinout-reference-gpios/

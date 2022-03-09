@@ -24,28 +24,11 @@
 #define READ 1
 #define WRITE 0
 
+#define INVALID_STRING 1
 
+/* Public API */
 void blink_bitbang();
-
-/* Helper functions */
-void setup_LCD_pins();
-void set_data_pin_direction(int direction);
-void set_data_pins(uint8_t data);
-uint8_t read_data_pins();
-void set_enable(int level);
-void set_rw(int level);
-void set_rs(int level);
-bool lcd_busy();
-void execute_instruction();
-
-/* LCD instructions */
-void clear_display();
-void return_home();
-void entry_mode_set(int increment_decrement, int accompanies_display_shift);
-void display_on_off_control(int display, int cursor, int blink);
-void cursor_or_display_shift(int display_or_cursor, int right_or_left);
-void function_set(int data_length, int number_of_display_lines, int font);
-bool set_cgram_address(uint8_t address);
-bool set_ddram_address(uint8_t address);
-void write_to_ram(uint8_t data);
-uint8_t read_from_ram();
+int lcd_init(int num_lines, int cursor_on_off, int cursor_blink);
+void lcd_clear_display();
+int lcd_print_string(char* string);
+int lcd_set_cursor_location(int row, int column);

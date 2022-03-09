@@ -10,6 +10,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include <stdbool.h>
 #include "HD44780.h"
 #include "soc/gpio_reg.h"
@@ -18,46 +19,125 @@
 #include "freertos/task.h"
 #include "rom/ets_sys.h"
 
-void blink_bitbang(){
+/* Helper functions */
+static void setup_LCD_pins();
+static void set_data_pin_direction(int direction);
+static void set_data_pins(uint8_t data);
+static uint8_t read_data_pins();
+static void set_enable(int level);
+static void set_rw(int level);
+static void set_rs(int level);
+static bool lcd_busy();
+static void execute_instruction();
+
+/* LCD instructions */
+static void return_home();
+static void entry_mode_set(int increment_decrement, int accompanies_display_shift);
+static void display_on_off_control(int display, int cursor, int blink);
+static void cursor_or_display_shift(int display_or_cursor, int right_or_left);
+static void function_set(int data_length, int number_of_display_lines, int font);
+static bool set_cgram_address(uint8_t address);
+static bool set_ddram_address(uint8_t address);
+static void write_to_ram(uint8_t data);
+static uint8_t read_from_ram();
+
+/* Public API */
+
+/**
+ * @brief Initializes the LCD display. 
+ * 
+ * @param lines 0 for 1 line, and 1 for 2 lines. 
+ * @param cursor_on_off 0 for off, 1 for on.
+ * @param cursor_blink 0 for off, 1 for on.
+ * @return int error code
+ */
+int lcd_init(int lines, int cursor_on_off, int cursor_blink){
     setup_LCD_pins();
 
-    //while(read_data_pins() >= 128){
-    //    printf("blocking\n");
-    //}
-
-    // initial setup, put in own function later.
     set_enable(1);
+
+    // Wait for the busy flag to be equal to zero before attempting to perform any operations.
     ets_delay_us(5);
     while(read_data_pins() >= 128){
         printf("waiting\n");
     }
 
-    uint8_t data = read_data_pins();
-    printf("data: %d\n", data);
     set_enable(0);
+
     ets_delay_us(5);
 
-    clear_display();
+    lcd_clear_display();
 
-    function_set(1, 1, 0);
+    function_set(1, lines, 0);
 
-    display_on_off_control(1, 1, 0);
+    display_on_off_control(1, cursor_on_off, cursor_blink);
     
     entry_mode_set(1, 0);
 
-    for(uint8_t c = 'a'; c <= 'p'; c++){
-        write_to_ram(c);
-        vTaskDelay(200 / portTICK_PERIOD_MS);
+    return 0;
+}
+
+/**
+ * @brief Clears the display and sets the DDRAM address to 0. Unshifts the display. Sets display to increment mode. 
+ * 
+ */
+void lcd_clear_display(){
+    set_rs(0);
+    set_rw(WRITE);
+    set_data_pin_direction(OUTPUT);
+    set_data_pins(0b00000001);
+
+    execute_instruction();
+}
+
+/**
+ * @brief Prints the string of text starting at wherever the cursor is. 
+ * 
+ * @param string 
+ * @return int 
+ */
+int lcd_print_string(char* string){
+    int string_length = strlen(string);
+    if(string_length > 20 || string_length <= 0){
+        return INVALID_STRING;
+    }
+    
+    while((*string) != '\0'){
+        write_to_ram(*string);
+        string++;
     }
 
-    for(;;){
-        gpio_set_level(LED_PIN, 1);
-        vTaskDelay(200 / portTICK_PERIOD_MS);
-        gpio_set_level(LED_PIN, 0);
-        vTaskDelay(200 / portTICK_PERIOD_MS);        
+    return 0;
+}
+
+#define LINE_0_START 0x00
+#define LINE_0_END 0x27
+#define LINE_1_START 0x40
+#define LINE_1_END 0x67
+
+/**
+ * @brief Set the cursor location object
+ * 
+ * @param row The row that the cursor should go to. This can be 0-1 (lines 0 and 1).
+ * @param column The column that the cursor should move to. This can be 0-15.
+ * @return int return code
+ */
+int lcd_set_cursor_location(int row, int column){
+    if(row > 1 || row < 0){
+        return 1;
     }
-    
-    
+
+    if(column > 15 || column < 0){
+        return 1;
+    }
+
+    if(row == 0){ // first line
+        set_ddram_address(column);
+    }else{ // second line
+        set_ddram_address(LINE_1_START + column);
+    }
+
+    return 0;
 }
 
 /**
@@ -65,7 +145,7 @@ void blink_bitbang(){
  *          RW = READ, E = 0, RS = 0. These are set as output pins. D0-D7 are set as input pins. 
  * 
  */
-void setup_LCD_pins(){
+static void setup_LCD_pins(){
     gpio_reset_pin(LED_PIN);
     gpio_reset_pin(RS);
     gpio_reset_pin(RW);
@@ -94,7 +174,7 @@ void setup_LCD_pins(){
  * 
  * @param direction 0 for input and 1 for output. 
  */
-void set_data_pin_direction(int direction){
+static void set_data_pin_direction(int direction){
     if(direction){
         REG_WRITE(GPIO_ENABLE_W1TS_REG, DATA_MASK);
     }else{
@@ -107,7 +187,7 @@ void set_data_pin_direction(int direction){
  * 
  * @param data The 8 data pins will be set to the value of this byte of data. 
  */
-void set_data_pins(uint8_t data){
+static void set_data_pins(uint8_t data){
     uint32_t data_shifted = data << D0; // shift the data to begin at D7 which is BIT12
 
     uint32_t output = (REG_READ(GPIO_OUT_REG) & ~(DATA_MASK)) | (data_shifted);
@@ -120,7 +200,7 @@ void set_data_pins(uint8_t data){
  * 
  * @return uint8_t The data on the data gpio pins. 
  */
-uint8_t read_data_pins(){
+static uint8_t read_data_pins(){
     uint8_t input = (REG_READ(GPIO_IN_REG) & DATA_MASK) >> D0;
 
     return input;
@@ -133,7 +213,7 @@ uint8_t read_data_pins(){
  * 
  * @param level 1 for enabled and 0 for not enabled. 
  */
-void set_enable(int level){
+static void set_enable(int level){
     gpio_set_level(E, level);
 }
 
@@ -142,7 +222,7 @@ void set_enable(int level){
  * 
  * @param level 0 for write and 1 for read. 
  */
-void set_rw(int level){
+static void set_rw(int level){
     gpio_set_level(RW, level);
 }
 
@@ -151,7 +231,7 @@ void set_rw(int level){
  * 
  * @param level 
  */
-void set_rs(int level){
+static void set_rs(int level){
     gpio_set_level(RS, level);
 }
 
@@ -161,9 +241,7 @@ void set_rs(int level){
  * @return true if the LCD is currently busy (busy flag = 1).
  * @return false if the LCD is not busy (busy flag = 0).
  */
-bool lcd_busy(){
-    // Read the data pins.
-
+static bool lcd_busy(){
     // You can read the data pins when RW=1 and E=1. 
     set_enable(1);
     ets_delay_us(1);
@@ -184,7 +262,7 @@ bool lcd_busy(){
  *          finished with any internal operations and another instruction can be executed. 
  * 
  */
-void execute_instruction(){
+static void execute_instruction(){
     // Turn on the enable pin for 10us. 
     set_enable(1);
     ets_delay_us(1);
@@ -201,23 +279,10 @@ void execute_instruction(){
 }
 
 /**
- * @brief Clears the display and sets the DDRAM address to 0. Unshifts the display. Sets display to increment mode. 
- * 
- */
-void clear_display(){
-    set_rs(0);
-    set_rw(WRITE);
-    set_data_pin_direction(OUTPUT);
-    set_data_pins(0b00000001);
-
-    execute_instruction();
-}
-
-/**
  * @brief Sets DDRAM address to 0 and unshifts display. 
  * 
  */
-void return_home(){
+static void return_home(){
     set_rs(0);
     set_rw(WRITE);
     set_data_pin_direction(OUTPUT);
@@ -235,24 +300,17 @@ void return_home(){
  *                                  If increment_decrement is set to 0, the display will shift to the right. 
  *                                  If increment_decrement is set to 1, the display will shift to the left. 
  */
-void entry_mode_set(int increment_decrement, int accompanies_display_shift){
-    // TODO: test this function.
-
-    // Base instruction
+static void entry_mode_set(int increment_decrement, int accompanies_display_shift){
     uint8_t instruction = 0b00000100;
 
-    // Edit base instruction based on the flags. 
     if(increment_decrement) instruction |= 0b00000010;
     if(accompanies_display_shift) instruction |= 0b00000001;
 
-    // Set the RS and RW pins. 
     set_rs(0);
     set_rw(WRITE);
 
-    // The data pins are sending data to the LCD. 
     set_data_pin_direction(OUTPUT);
 
-    // Set the pins to the value of the instruction. 
     set_data_pins(instruction);
 
     execute_instruction();
@@ -265,7 +323,7 @@ void entry_mode_set(int increment_decrement, int accompanies_display_shift){
  * @param cursor 1 to display the cursor and 0 to not display the cursor. 
  * @param blink 1 to blink the cursor and 0 to not blink the cursor. 
  */
-void display_on_off_control(int display, int cursor, int blink){
+static void display_on_off_control(int display, int cursor, int blink){
     uint8_t instruction = 0b00001000;
 
     if(display) instruction |= 0b00000100;
@@ -280,7 +338,6 @@ void display_on_off_control(int display, int cursor, int blink){
     set_data_pins(instruction);
 
     execute_instruction();
-    // done? 
 }
 
 /**
@@ -289,24 +346,17 @@ void display_on_off_control(int display, int cursor, int blink){
  * @param display_or_cursor 1 to shift display and 0 to move cursor. 
  * @param right_or_left 1 to shift/move to the right and 0 to shift/move to the left. 
  */
-void cursor_or_display_shift(int display_or_cursor, int right_or_left){
-    // TODO: test this function.
-
-    // Base instruction
+static void cursor_or_display_shift(int display_or_cursor, int right_or_left){
     uint8_t instruction = 0b00010000;
 
-    // Edit base instruction based on the flags. 
     if(display_or_cursor) instruction |= 0b00001000;
     if(right_or_left) instruction |= 0b00000100;
 
-    // Set the RS and RW pins. 
     set_rs(0);
     set_rw(WRITE);
 
-    // The data pins are sending data to the LCD. 
     set_data_pin_direction(OUTPUT);
 
-    // Set the pins to the value of the instruction. 
     set_data_pins(instruction);
 
     execute_instruction();
@@ -319,25 +369,18 @@ void cursor_or_display_shift(int display_or_cursor, int right_or_left){
  * @param number_of_display_lines 1 for 2 lines and 0 for 1 line. 
  * @param font 1 for 5x10 dots and 0 for 5x8 dots. 
  */
-void function_set(int data_length, int number_of_display_lines, int font){
-    // TODO: fully test this function. It is only partially tested. 
-
-    // Base instruction
+static void function_set(int data_length, int number_of_display_lines, int font){
     uint8_t instruction = 0b00100000;
 
-    // Edit base instruction based on the flags. 
     if(data_length) instruction |= 0b00010000;
     if(number_of_display_lines) instruction |= 0b00001000;
     if(font) instruction |= 0b00000100;
 
-    // Set the RS and RW pins. 
     set_rs(0);
     set_rw(WRITE);
 
-    // The data pins are sending data to the LCD. 
     set_data_pin_direction(OUTPUT);
 
-    // Set the pins to the value of the instruction. 
     set_data_pins(instruction);
 
     execute_instruction();
@@ -351,7 +394,7 @@ void function_set(int data_length, int number_of_display_lines, int font){
  * @return true If the address was valid. 
  * @return false If the address was not valid. 
  */
-bool set_cgram_address(uint8_t address){
+static bool set_cgram_address(uint8_t address){
     // TODO: implement
     return true;
 }
@@ -363,8 +406,17 @@ bool set_cgram_address(uint8_t address){
  * @return true If the address was valid. 
  * @return false If the address was not valid. 
  */
-bool set_ddram_address(uint8_t address){
-    // TODO: implement
+static bool set_ddram_address(uint8_t address){
+    uint8_t instruction = address | 128;
+
+    set_rs(0);
+    set_rw(WRITE);
+
+    set_data_pin_direction(OUTPUT);
+
+    set_data_pins(instruction);
+
+    execute_instruction();
 
     return true;
 }
@@ -374,7 +426,7 @@ bool set_ddram_address(uint8_t address){
  * 
  * @param data The data that is to be written to the ram. 
  */
-void write_to_ram(uint8_t data){
+static void write_to_ram(uint8_t data){
     set_rs(1);
     set_rw(0);
     
@@ -389,7 +441,7 @@ void write_to_ram(uint8_t data){
  * 
  * @return uint8_t The data located at the current address. 
  */
-uint8_t read_from_ram(){
+static uint8_t read_from_ram(){
     // TODO: implement
 
     return 0;
