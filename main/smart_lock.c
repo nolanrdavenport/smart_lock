@@ -1,9 +1,50 @@
+/**
+ * @file smart_lock.c
+ * @author Nolan Davenport (nolanrdavenport@gmail.com)
+ * @brief The main file for the smart lock
+ * @version 0.1
+ * @date 2022-05-28
+ * 
+ * @copyright Copyright (c) 2022
+ * 
+ *  This file is part of smart_lock.
+ *  
+ *  smart_lock is free software: you can redistribute it and/or modify it under the terms of the 
+ *  GNU General Public License as published by the Free Software Foundation, either version 3 of 
+ *  the License, or (at your option) any later version.
+ *  
+ *  smart_lock is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without 
+ *  even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ *  General Public License for more details.
+ *  
+ *  You should have received a copy of the GNU General Public License along with Foobar. If not, 
+ *  see <https://www.gnu.org/licenses/>. 
+ * 
+ */
+
 #include <stdio.h>
 
 #include "driver/mcpwm.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "HD44780.h"
+#include "wifi.h"
+
+#define DUTY_CYCLE_OPEN_STATE 9.5
+#define DUTY_CYCLE_CLOSED_STATE 2.5
+
+typedef enum{
+    OPEN,
+    CLOSED
+} lock_state_t;
+
+void set_lock_state(lock_state_t state){
+    if(state == OPEN){
+        mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_GEN_A, DUTY_CYCLE_OPEN_STATE);
+    }else if(state == CLOSED){
+        mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_GEN_A, DUTY_CYCLE_CLOSED_STATE);
+    }
+}
 
 void init_lock_motor(){
     mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, 33);
@@ -16,18 +57,7 @@ void init_lock_motor(){
 
     mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &config);
 
-    mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_GEN_A, 2.5);
-}
-
-void toggle_lock(){
-    static bool open = false;
-    if(open == false){
-        open = true;
-        mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_GEN_A, 9.5);
-    }else{
-        open = false;
-        mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_GEN_A, 2.5);
-    }
+    set_lock_state(CLOSED);
 }
 
 void unlock(){
@@ -37,11 +67,11 @@ void unlock(){
 
     lcd_print_string("unlocked");
     
-    toggle_lock();
+    set_lock_state(OPEN);
 
     vTaskDelay(4000 / portTICK_PERIOD_MS);
 
-    toggle_lock();
+    set_lock_state(CLOSED);
 
     lcd_clear_display();
 
@@ -50,15 +80,15 @@ void unlock(){
     lcd_print_string("locked");
 }
 
+#define BUTTON_PIN 36
+
 void app_main(void)
 {
     init_lock_motor();
 
-    gpio_reset_pin(36);
+    gpio_reset_pin(BUTTON_PIN);
 
-    gpio_set_direction(36, GPIO_MODE_INPUT);
-
-    printf("got here\n");
+    gpio_set_direction(BUTTON_PIN, GPIO_MODE_INPUT);
 
     lcd_init(1, 0, 0);
 
@@ -66,8 +96,10 @@ void app_main(void)
 
     lcd_print_string("locked");
 
+    wifi_test();
+
     for(;;){
-        if(gpio_get_level(36) == 1){
+        if(gpio_get_level(BUTTON_PIN) == 1){
             unlock();
         }
         vTaskDelay(25 / portTICK_PERIOD_MS);
