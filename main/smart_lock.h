@@ -21,10 +21,4 @@
 
 #pragma once
 
-#define DUTY_CYCLE_OPEN_STATE 9.5
-#define DUTY_CYCLE_CLOSED_STATE 2.5
-
-typedef enum{
-    OPEN,
-    CLOSED
-} lock_state_t;
+#define USE_LCD_SCREEN

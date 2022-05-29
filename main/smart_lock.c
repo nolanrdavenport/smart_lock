@@ -32,48 +32,7 @@
 #include "smart_lock.h"
 #include "smart_lock_utils.h"
 #include "mqtt.h"
-
-void set_lock_state(lock_state_t state){
-    if(state == OPEN){
-        mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_GEN_A, DUTY_CYCLE_OPEN_STATE);
-    }else if(state == CLOSED){
-        mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_GEN_A, DUTY_CYCLE_CLOSED_STATE);
-    }
-}
-
-void init_lock_motor(){
-    mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, 33);
-    mcpwm_config_t config;
-    config.frequency = 50;
-    config.cmpr_a = 10;
-    config.cmpr_b = 10;
-    config.duty_mode = MCPWM_DUTY_MODE_0;
-    config.counter_mode = MCPWM_UP_COUNTER;
-
-    mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &config);
-
-    set_lock_state(CLOSED);
-}
-
-void unlock(){
-    lcd_clear_display();
-
-    lcd_set_cursor_location(0, 4);
-
-    lcd_print_string("unlocked");
-    
-    set_lock_state(OPEN);
-
-    delay_ms(4000);
-
-    set_lock_state(CLOSED);
-
-    lcd_clear_display();
-
-    lcd_set_cursor_location(0, 5);
-
-    lcd_print_string("locked");
-}
+#include "lock_actuation.h"
 
 #define BUTTON_PIN 36
 
@@ -85,26 +44,25 @@ void app_main(void)
 
     gpio_set_direction(BUTTON_PIN, GPIO_MODE_INPUT);
 
+    #ifdef USE_LCD_SCREEN
     lcd_init(1, 0, 0);
 
     lcd_set_cursor_location(0, 5);
 
     lcd_print_string("locked");
+    #endif
 
     connect_to_wifi();
 
     mqtt_app_start();
 
-    delay_ms(1000);
+    delay_ms(200);
 
-    for(;;){
-        esp_mqtt_client_publish(client, "/mister_nolan", "hello from mister_nolan's esp32", 0, 0, 0);
-
-        delay_ms(1000);
-    }
+    esp_mqtt_client_subscribe(client, "/mister_nolan/sub", 0);
 
     for(;;){
         if(gpio_get_level(BUTTON_PIN) == 1){
+            esp_mqtt_client_publish(client, "/mister_nolan", "unlocked manually through a button", 0, 0, 0);
             unlock();
         }
 
