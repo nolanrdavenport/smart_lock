@@ -29,14 +29,9 @@
 #include "freertos/task.h"
 #include "HD44780.h"
 #include "wifi.h"
-
-#define DUTY_CYCLE_OPEN_STATE 9.5
-#define DUTY_CYCLE_CLOSED_STATE 2.5
-
-typedef enum{
-    OPEN,
-    CLOSED
-} lock_state_t;
+#include "smart_lock.h"
+#include "smart_lock_utils.h"
+#include "mqtt.h"
 
 void set_lock_state(lock_state_t state){
     if(state == OPEN){
@@ -69,7 +64,7 @@ void unlock(){
     
     set_lock_state(OPEN);
 
-    vTaskDelay(4000 / portTICK_PERIOD_MS);
+    delay_ms(4000);
 
     set_lock_state(CLOSED);
 
@@ -96,12 +91,23 @@ void app_main(void)
 
     lcd_print_string("locked");
 
-    wifi_test();
+    connect_to_wifi();
+
+    mqtt_app_start();
+
+    delay_ms(1000);
+
+    for(;;){
+        esp_mqtt_client_publish(client, "/mister_nolan", "hello from mister_nolan's esp32", 0, 0, 0);
+
+        delay_ms(1000);
+    }
 
     for(;;){
         if(gpio_get_level(BUTTON_PIN) == 1){
             unlock();
         }
-        vTaskDelay(25 / portTICK_PERIOD_MS);
+
+        delay_ms(25);
     }
 }
